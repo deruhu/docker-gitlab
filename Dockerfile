@@ -1,5 +1,8 @@
-FROM sameersbn/ubuntu:14.04.20150120
-MAINTAINER sameer@damagehead.com
+FROM ubuntu
+MAINTAINER sebastian.noack@fh-kiel.de
+
+RUN apt-get update \
+ && apt-get install -y wget
 
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv E1DF1F24 \
  && echo "deb http://ppa.launchpad.net/git-core/ppa/ubuntu trusty main" >> /etc/apt/sources.list \
@@ -34,8 +37,8 @@ EXPOSE 22
 EXPOSE 80
 EXPOSE 443
 
-VOLUME ["/home/git/data"]
-VOLUME ["/var/log/gitlab"]
+#VOLUME ["/home/git/data"]
+#VOLUME ["/var/log/gitlab"]
 
 ENTRYPOINT ["/app/init"]
 CMD ["app:start"]
