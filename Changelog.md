@@ -1,5 +1,33 @@
 # Changelog
 
+**7.9.4**
+- gitlab: upgrade to CE v.7.9.4
+
+**7.9.3**
+- added `NGINX_PROXY_BUFFERING` option
+- added `NGINX_ACCEL_BUFFERING` option
+- added `GITLAB_GRAVATAR_ENABLED` option
+- added `GITLAB_GRAVATAR_HTTP_URL` option
+- added `GITLAB_GRAVATAR_HTTPS_URL` option
+- fixes: "transfer closed with xxx bytes remaining to read" error
+- gitlab: upgrade to CE v.7.9.3
+
+**7.9.2**
+- gitlab: upgrade to CE v.7.9.2
+
+**7.9.1**
+- init: set default value of `SMTP_OPENSSL_VERIFY_MODE` to `none`
+- gitlab: upgrade to CE v.7.9.1
+
+**7.9.0**
+- gitlab-shell: upgrade to v.2.6.0
+- gitlab: upgrade to CE v.7.9.0
+- init: set default value of `UNICORN_WORKERS` to `3`
+- init: set default value of `SMTP_OPENSSL_VERIFY_MODE` to `peer`
+- init: removed `GITLAB_RESTRICTED_VISIBILITY` configuration option, can be set from the UI
+- init: added BitBucket OAuth configuration support
+- init: added `GITLAB_EMAIL_DISPLAY_NAME` configuration option
+
 **7.8.4**
 - gitlab: upgrade to CE v.7.8.4
 
