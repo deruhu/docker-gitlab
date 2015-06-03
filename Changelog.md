@@ -1,5 +1,43 @@
 # Changelog
 
+This file only reflects the changes that are made in the the docker image. Please refer to the upstream GitLab [CHANGELOG](https://github.com/gitlabhq/gitlabhq/blob/master/CHANGELOG) for the list of changes in GitLab.
+
+**7.11.4**
+- gitlab: upgrade to CE v.7.11.4
+
+**7.11.3**
+- gitlab: upgrade to CE v.7.11.3
+
+**7.11.2**
+- gitlab: upgrade to CE v.7.11.2
+
+**7.11.0**
+- init: added `SIDEKIQ_MEMORY_KILLER_MAX_RSS` configuration option
+- init: added `SIDEKIQ_SHUTDOWN_TIMEOUT` configuration option
+- gitlab-shell: upgrade to v.2.6.3
+- gitlab: upgrade to CE v.7.11.0
+- init: removed `GITLAB_PROJECTS_VISIBILITY` ENV parameter
+
+**7.10.4**
+- gitlab: upgrade to CE v.7.10.4
+
+**7.10.3**
+- gitlab: upgrade to CE v.7.10.3
+
+**7.10.2**
+- init: added support for remote AWS backups
+- gitlab: upgrade to CE v.7.10.2
+
+**7.10.1**
+- gitlab: upgrade to CE v.7.10.1
+
+**7.10.0**
+- gitlab-shell: upgrade to v.2.6.2
+- gitlab: upgrade to CE v.7.10.0
+- init: removed ENV variables to configure *External Issue Tracker* integration
+- init: added `GITLAB_EMAIL_REPLY_TO` configuration option
+- init: added `LDAP_BLOCK_AUTO_CREATED_USERS` configuration option
+
 **7.9.4**
 - gitlab: upgrade to CE v.7.9.4
 
