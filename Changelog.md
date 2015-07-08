@@ -2,6 +2,26 @@
 
 This file only reflects the changes that are made in the the docker image. Please refer to the upstream GitLab [CHANGELOG](https://github.com/gitlabhq/gitlabhq/blob/master/CHANGELOG) for the list of changes in GitLab.
 
+**7.12.2-2**
+- enable persistence `.secret` file used in 2FA
+
+**7.12.2-1**
+- fixed gitlab:backup:restore raketask
+
+**7.12.2**
+- gitlab: upgrade to CE v.7.12.2
+
+**7.12.1**
+- gitlab: upgrade to CE v.7.12.1
+
+**7.12.0**
+- added `SMTP_TLS` configuration parameter
+- gitlab: upgrade to CE v.7.12.0
+- added `OAUTH_AUTO_LINK_LDAP_USER` configuration parameter
+
+**7.11.4-1**
+- base image update to fix SSL vulnerability
+
 **7.11.4**
 - gitlab: upgrade to CE v.7.11.4
 

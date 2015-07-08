@@ -1,16 +1,6 @@
 #!/bin/bash
 set -e
 
-GITLAB_VERSION=7.11.4
-GITLAB_SHELL_VERSION=2.6.3
-
-GITLAB_HOME="/home/git"
-GITLAB_INSTALL_DIR="${GITLAB_HOME}/gitlab"
-GITLAB_DATA_DIR="${GITLAB_HOME}/data"
-GITLAB_LOG_DIR="/var/log/gitlab"
-GITLAB_SHELL_INSTALL_DIR="${GITLAB_HOME}/gitlab-shell"
-
-SETUP_DIR="/app/setup"
 GEM_CACHE_DIR="${SETUP_DIR}/cache"
 
 # rebuild apt cache
@@ -26,9 +16,9 @@ apt-get install -y gcc g++ make patch pkg-config cmake \
 # remove the host keys generated during openssh-server installation
 rm -rf /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub
 
-# add git user
-adduser --disabled-login --gecos 'GitLab' git
-passwd -d git
+# add ${GITLAB_USER} user
+adduser --disabled-login --gecos 'GitLab' ${GITLAB_USER}
+passwd -d ${GITLAB_USER}
 
 # set PATH (fixes cron job PATH issues)
 cat >> ${GITLAB_HOME}/.profile <<EOF
@@ -36,15 +26,27 @@ PATH=/usr/local/sbin:/usr/local/bin:\$PATH
 EOF
 
 rm -rf ${GITLAB_HOME}/.ssh
-sudo -u git -H mkdir -p ${GITLAB_DATA_DIR}/.ssh
-sudo -u git -H ln -s ${GITLAB_DATA_DIR}/.ssh ${GITLAB_HOME}/.ssh
+sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/.ssh
+sudo -HEu ${GITLAB_USER} ln -s ${GITLAB_DATA_DIR}/.ssh ${GITLAB_HOME}/.ssh
 
 # create the data store
-sudo -u git -H mkdir -p ${GITLAB_DATA_DIR}
+sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}
+
+# configure git for the 'git' user
+sudo -HEu ${GITLAB_USER} git config --global core.autocrlf input
+
+# install gitlab-shell
+echo "Cloning gitlab-shell v.${GITLAB_SHELL_VERSION}..."
+sudo -u git -H git clone -q -b v${GITLAB_SHELL_VERSION} --depth 1 \
+  https://github.com/gitlabhq/gitlab-shell.git ${GITLAB_SHELL_INSTALL_DIR}
+
+cd ${GITLAB_SHELL_INSTALL_DIR}
+sudo -u git -H cp -a config.yml.example config.yml
+sudo -u git -H ./bin/install
 
 # shallow clone gitlab-ce
 echo "Cloning gitlab-ce v.${GITLAB_VERSION}..."
-sudo -u git -H git clone -q -b v${GITLAB_VERSION} --depth 1 \
+sudo -HEu ${GITLAB_USER} git clone -q -b v${GITLAB_VERSION} --depth 1 \
   https://github.com/gitlabhq/gitlabhq.git ${GITLAB_INSTALL_DIR}
 
 cd ${GITLAB_INSTALL_DIR}
@@ -54,45 +56,46 @@ sed "/headers\['Strict-Transport-Security'\]/d" -i app/controllers/application_c
 
 # copy default configurations
 cp lib/support/nginx/gitlab /etc/nginx/sites-enabled/gitlab
-sudo -u git -H cp config/gitlab.yml.example config/gitlab.yml
-sudo -u git -H cp config/resque.yml.example config/resque.yml
-sudo -u git -H cp config/database.yml.mysql config/database.yml
-sudo -u git -H cp config/unicorn.rb.example config/unicorn.rb
-sudo -u git -H cp config/initializers/rack_attack.rb.example config/initializers/rack_attack.rb
-sudo -u git -H cp config/initializers/smtp_settings.rb.sample config/initializers/smtp_settings.rb
+sudo -HEu ${GITLAB_USER} cp config/gitlab.yml.example config/gitlab.yml
+sudo -HEu ${GITLAB_USER} cp config/resque.yml.example config/resque.yml
+sudo -HEu ${GITLAB_USER} cp config/database.yml.mysql config/database.yml
+sudo -HEu ${GITLAB_USER} cp config/unicorn.rb.example config/unicorn.rb
+sudo -HEu ${GITLAB_USER} cp config/initializers/rack_attack.rb.example config/initializers/rack_attack.rb
+sudo -HEu ${GITLAB_USER} cp config/initializers/smtp_settings.rb.sample config/initializers/smtp_settings.rb
 
 # symlink log -> ${GITLAB_LOG_DIR}/gitlab
 rm -rf log
 ln -sf ${GITLAB_LOG_DIR}/gitlab log
 
 # create required tmp directories
-sudo -u git -H mkdir -p tmp/pids/ tmp/sockets/
+sudo -HEu ${GITLAB_USER} mkdir -p tmp/pids/ tmp/sockets/
 chmod -R u+rwX tmp
 
 # create symlink to assets in tmp/cache
 rm -rf tmp/cache
-sudo -u git -H ln -s ${GITLAB_DATA_DIR}/tmp/cache tmp/cache
+sudo -HEu ${GITLAB_USER} ln -s ${GITLAB_DATA_DIR}/tmp/cache tmp/cache
 
 # create symlink to assets in public/assets
 rm -rf public/assets
-sudo -u git -H ln -s ${GITLAB_DATA_DIR}/tmp/public/assets public/assets
+sudo -HEu ${GITLAB_USER} ln -s ${GITLAB_DATA_DIR}/tmp/public/assets public/assets
 
 # create symlink to uploads directory
 rm -rf public/uploads
-sudo -u git -H ln -s ${GITLAB_DATA_DIR}/uploads public/uploads
+sudo -HEu ${GITLAB_USER} ln -s ${GITLAB_DATA_DIR}/uploads public/uploads
+
+# create symlink to .secret in GITLAB_DATA_DIR
+rm -rf .secret
+sudo -HEu ${GITLAB_USER} ln -sf ${GITLAB_DATA_DIR}/.secret
 
 # install gems required by gitlab, use local cache if available
-if [ -d "${GEM_CACHE_DIR}" ]; then
+if [[ -d ${GEM_CACHE_DIR} ]]; then
   mv ${GEM_CACHE_DIR} vendor/
-  chown -R git:git vendor/cache
+  chown -R ${GITLAB_USER}:${GITLAB_USER} vendor/cache
 fi
-sudo -u git -H bundle install -j$(nproc) --deployment --without development test aws
-
-# install gitlab-shell
-sudo -u git -H bundle exec rake gitlab:shell:install[v${GITLAB_SHELL_VERSION}] REDIS_URL=unix:/var/run/redis/redis.sock RAILS_ENV=production
+sudo -HEu ${GITLAB_USER} bundle install -j$(nproc) --deployment --without development test aws
 
 # make sure everything in ${GITLAB_HOME} is owned by the git user
-chown -R git:git ${GITLAB_HOME}/
+chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_HOME}/
 
 # install gitlab bootscript
 cp lib/support/init.d/gitlab /etc/init.d/gitlab
