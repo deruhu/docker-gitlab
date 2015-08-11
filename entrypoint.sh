@@ -1,10 +1,13 @@
 #!/bin/bash
 set -e
 
+[[ -n $DEBUG_ENTRYPOINT ]] && set -x
+
 SYSCONF_TEMPLATES_DIR="${SETUP_DIR}/config"
 USERCONF_TEMPLATES_DIR="${GITLAB_DATA_DIR}/config"
 
 GITLAB_BACKUP_DIR="${GITLAB_BACKUP_DIR:-$GITLAB_DATA_DIR/backups}"
+GITLAB_REPOS_DIR="${GITLAB_REPOS_DIR:-$GITLAB_DATA_DIR/repositories}"
 GITLAB_HOST=${GITLAB_HOST:-localhost}
 GITLAB_PORT=${GITLAB_PORT:-}
 GITLAB_SSH_HOST=${GITLAB_SSH_HOST:-$GITLAB_HOST}
@@ -81,6 +84,9 @@ SMTP_PASS=${SMTP_PASS:-}
 SMTP_OPENSSL_VERIFY_MODE=${SMTP_OPENSSL_VERIFY_MODE:-none}
 SMTP_STARTTLS=${SMTP_STARTTLS:-true}
 SMTP_TLS=${SMTP_TLS:-false}
+SMTP_CA_ENABLED=${SMTP_CA_ENABLED:-false}
+SMTP_CA_PATH=${SMTP_CA_PATH:-$GITLAB_DATA_DIR/certs}
+SMTP_CA_FILE=${SMTP_CA_FILE:-$GITLAB_DATA_DIR/certs/ca.crt}
 if [[ -n ${SMTP_USER} ]]; then
   SMTP_ENABLED=${SMTP_ENABLED:-true}
   SMTP_AUTHENTICATION=${SMTP_AUTHENTICATION:-login}
@@ -100,6 +106,7 @@ LDAP_ALLOW_USERNAME_OR_EMAIL_LOGIN=${LDAP_ALLOW_USERNAME_OR_EMAIL_LOGIN:-}
 LDAP_BLOCK_AUTO_CREATED_USERS=${LDAP_BLOCK_AUTO_CREATED_USERS:-false}
 LDAP_BASE=${LDAP_BASE:-}
 LDAP_USER_FILTER=${LDAP_USER_FILTER:-}
+LDAP_LABEL=${LDAP_LABEL:-LDAP}
 
 GITLAB_HTTPS_HSTS_ENABLED=${GITLAB_HTTPS_HSTS_ENABLED:-true}
 GITLAB_HTTPS_HSTS_MAXAGE=${GITLAB_HTTPS_HSTS_MAXAGE:-31536000}
@@ -108,6 +115,8 @@ GITLAB_GRAVATAR_ENABLED=${GITLAB_GRAVATAR_ENABLED:-true}
 GITLAB_GRAVATAR_HTTP_URL=${GITLAB_GRAVATAR_HTTP_URL:-}
 GITLAB_GRAVATAR_HTTPS_URL=${GITLAB_GRAVATAR_HTTPS_URL:-}
 
+OAUTH_ENABLED=${OAUTH_ENABLED:-}
+OAUTH_AUTO_SIGN_IN_WITH_PROVIDER=${OAUTH_AUTO_SIGN_IN_WITH_PROVIDER:-}
 OAUTH_ALLOW_SSO=${OAUTH_ALLOW_SSO:-false}
 OAUTH_BLOCK_AUTO_CREATED_USERS=${OAUTH_BLOCK_AUTO_CREATED_USERS:-true}
 OAUTH_AUTO_LINK_LDAP_USER=${OAUTH_AUTO_LINK_LDAP_USER:-false}
@@ -126,6 +135,20 @@ OAUTH_GITLAB_APP_SECRET=${OAUTH_GITLAB_APP_SECRET:-}
 
 OAUTH_BITBUCKET_API_KEY=${OAUTH_BITBUCKET_API_KEY:-}
 OAUTH_BITBUCKET_APP_SECRET=${OAUTH_BITBUCKET_APP_SECRET:-}
+
+case $GITLAB_HTTPS in
+  true)
+    OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL=${OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL:-https://${GITLAB_HOST}/users/auth/saml/callback}
+    OAUTH_SAML_ISSUER=${OAUTH_SAML_ISSUER:-https://${GITLAB_HOST}}
+    ;;
+  false)
+    OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL=${OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL:-http://${GITLAB_HOST}/users/auth/saml/callback}
+    OAUTH_SAML_ISSUER=${OAUTH_SAML_ISSUER:-http://${GITLAB_HOST}}
+    ;;
+esac
+OAUTH_SAML_IDP_CERT_FINGERPRINT=${OAUTH_SAML_IDP_CERT_FINGERPRINT:-}
+OAUTH_SAML_IDP_SSO_TARGET_URL=${OAUTH_SAML_IDP_SSO_TARGET_URL:-}
+OAUTH_SAML_NAME_IDENTIFIER_FORMAT=${OAUTH_SAML_NAME_IDENTIFIER_FORMAT:-urn:oasis:names:tc:SAML:2.0:nameid-format:transient}
 
 GOOGLE_ANALYTICS_ID=${GOOGLE_ANALYTICS_ID:-}
 
@@ -259,6 +282,12 @@ if [[ ! -e ${GITLAB_DATA_DIR}/ssh/ssh_host_rsa_key ]]; then
   mkdir -p ${GITLAB_DATA_DIR}/ssh/
   mv /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub ${GITLAB_DATA_DIR}/ssh/
 fi
+
+## fix permissions of ssh key files
+chmod 0600 ${GITLAB_DATA_DIR}/ssh/*_key
+chmod 0644 ${GITLAB_DATA_DIR}/ssh/*.pub
+chown -R root:root ${GITLAB_DATA_DIR}/ssh
+
 # configure sshd to pick up the host keys from ${GITLAB_DATA_DIR}/ssh/
 sed -i 's,HostKey /etc/ssh/,HostKey '"${GITLAB_DATA_DIR}"'/ssh/,g' -i /etc/ssh/sshd_config
 
@@ -328,6 +357,7 @@ fi
 # configure application paths
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_DATA_DIR}},'"${GITLAB_DATA_DIR}"',g' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_BACKUP_DIR}},'"${GITLAB_BACKUP_DIR}"',g' -i config/gitlab.yml
+sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_REPOS_DIR}},'"${GITLAB_REPOS_DIR}"',g' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_INSTALL_DIR}},'"${GITLAB_INSTALL_DIR}"',g' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_SHELL_INSTALL_DIR}},'"${GITLAB_SHELL_INSTALL_DIR}"',g' -i config/gitlab.yml
 
@@ -421,6 +451,7 @@ sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_HOME}},'"${GITLAB_HOME}"',g' -i ${GITLA
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_LOG_DIR}},'"${GITLAB_LOG_DIR}"',g' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_DATA_DIR}},'"${GITLAB_DATA_DIR}"',g' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_BACKUP_DIR}},'"${GITLAB_BACKUP_DIR}"',g' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
+sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_REPOS_DIR}},'"${GITLAB_REPOS_DIR}"',g' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
 sudo -HEu ${GITLAB_USER} sed 's,{{GITLAB_SHELL_INSTALL_DIR}},'"${GITLAB_SHELL_INSTALL_DIR}"',g' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{SSL_SELF_SIGNED}}/'"${SSL_SELF_SIGNED}"'/' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{REDIS_HOST}}/'"${REDIS_HOST}"'/' -i ${GITLAB_SHELL_INSTALL_DIR}/config.yml
@@ -458,6 +489,19 @@ if [[ ${SMTP_ENABLED} == true ]]; then
     "") sudo -HEu ${GITLAB_USER} sed '/{{SMTP_AUTHENTICATION}}/d' -i config/initializers/smtp_settings.rb ;;
     *) sudo -HEu ${GITLAB_USER} sed 's/{{SMTP_AUTHENTICATION}}/'"${SMTP_AUTHENTICATION}"'/' -i config/initializers/smtp_settings.rb ;;
   esac
+
+  if [[ ${SMTP_CA_ENABLED} == true ]]; then
+    if [[ -d ${SMTP_CA_PATH} ]]; then
+      sudo -HEu ${GITLAB_USER} sed 's,{{SMTP_CA_PATH}},'"${SMTP_CA_PATH}"',' -i config/initializers/smtp_settings.rb
+    fi
+
+    if [[ -f ${SMTP_CA_FILE} ]]; then
+      sudo -HEu ${GITLAB_USER} sed 's,{{SMTP_CA_FILE}},'"${SMTP_CA_FILE}"',' -i config/initializers/smtp_settings.rb
+    fi
+  else
+    sudo -HEu ${GITLAB_USER} sed '/{{SMTP_CA_PATH}}/d' -i config/initializers/smtp_settings.rb
+    sudo -HEu ${GITLAB_USER} sed '/{{SMTP_CA_FILE}}/d' -i config/initializers/smtp_settings.rb
+  fi
 fi
 
 # apply LDAP configuration
@@ -473,6 +517,7 @@ sudo -HEu ${GITLAB_USER} sed 's/{{LDAP_ALLOW_USERNAME_OR_EMAIL_LOGIN}}/'"${LDAP_
 sudo -HEu ${GITLAB_USER} sed 's/{{LDAP_BLOCK_AUTO_CREATED_USERS}}/'"${LDAP_BLOCK_AUTO_CREATED_USERS}"'/' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{LDAP_BASE}}/'"${LDAP_BASE}"'/' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{LDAP_USER_FILTER}}/'"${LDAP_USER_FILTER}"'/' -i config/gitlab.yml
+sudo -HEu ${GITLAB_USER} sed 's/{{LDAP_LABEL}}/'"${LDAP_LABEL}"'/' -i config/gitlab.yml
 
 # apply aws s3 backup configuration
 case ${AWS_BACKUPS} in
@@ -488,7 +533,7 @@ case ${AWS_BACKUPS} in
     ;;
   *)
     # remove backup configuration lines
-    sudo -HEu ${GITLAB_USER} sed /upload:/,/remote_directory:/d -i config/gitlab.yml
+    sudo -HEu ${GITLAB_USER} sed '/upload:/,/remote_directory:/d' -i config/gitlab.yml
     ;;
 esac
 
@@ -567,6 +612,22 @@ else
   sudo -HEu ${GITLAB_USER} sed '/{{OAUTH_BITBUCKET_APP_SECRET}}/d' -i config/gitlab.yml
 fi
 
+# saml
+if [[ -n ${OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL} && \
+      -n ${OAUTH_SAML_IDP_CERT_FINGERPRINT} && \
+      -n ${OAUTH_SAML_IDP_SSO_TARGET_URL} && \
+      -n ${OAUTH_SAML_ISSUER} && \
+      -n ${OAUTH_SAML_NAME_IDENTIFIER_FORMAT} ]]; then
+  OAUTH_ENABLED=true
+  sudo -HEu ${GITLAB_USER} sed 's,{{OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL}},'"${OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL}"',' -i config/gitlab.yml
+  sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_SAML_IDP_CERT_FINGERPRINT}}/'"${OAUTH_SAML_IDP_CERT_FINGERPRINT}"'/' -i config/gitlab.yml
+  sudo -HEu ${GITLAB_USER} sed 's,{{OAUTH_SAML_IDP_SSO_TARGET_URL}},'"${OAUTH_SAML_IDP_SSO_TARGET_URL}"',' -i config/gitlab.yml
+  sudo -HEu ${GITLAB_USER} sed 's,{{OAUTH_SAML_ISSUER}},'"${OAUTH_SAML_ISSUER}"',' -i config/gitlab.yml
+  sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_SAML_NAME_IDENTIFIER_FORMAT}}/'"${OAUTH_SAML_NAME_IDENTIFIER_FORMAT}"'/' -i config/gitlab.yml
+else
+  sudo -HEu ${GITLAB_USER} sed "/name: 'saml'/,/name_identifier_format:/d" -i config/gitlab.yml
+fi
+
 # google analytics
 if [[ -n ${GOOGLE_ANALYTICS_ID} ]]; then
   sudo -HEu ${GITLAB_USER} sed 's/{{GOOGLE_ANALYTICS_ID}}/'"${GOOGLE_ANALYTICS_ID}"'/' -i config/gitlab.yml
@@ -585,6 +646,16 @@ fi
 
 OAUTH_ENABLED=${OAUTH_ENABLED:-false}
 sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_ENABLED}}/'"${OAUTH_ENABLED}"'/' -i config/gitlab.yml
+
+case $OAUTH_AUTO_SIGN_IN_WITH_PROVIDER in
+  google_oauth2|twitter|github|gitlab|bitbucket|saml)
+    sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_AUTO_SIGN_IN_WITH_PROVIDER}}/'"${OAUTH_AUTO_SIGN_IN_WITH_PROVIDER}"'/' -i config/gitlab.yml
+    ;;
+  *)
+    sudo -HEu ${GITLAB_USER} sed '/{{OAUTH_AUTO_SIGN_IN_WITH_PROVIDER}}/d' -i config/gitlab.yml
+    ;;
+esac
+
 sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_ALLOW_SSO}}/'"${OAUTH_ALLOW_SSO}"'/' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_BLOCK_AUTO_CREATED_USERS}}/'"${OAUTH_BLOCK_AUTO_CREATED_USERS}"'/' -i config/gitlab.yml
 sudo -HEu ${GITLAB_USER} sed 's/{{OAUTH_AUTO_LINK_LDAP_USER}}/'"${OAUTH_AUTO_LINK_LDAP_USER}"'/' -i config/gitlab.yml
@@ -646,13 +717,13 @@ chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}
 chmod +x ${GITLAB_DATA_DIR}
 
 # create the repositories directory and make sure it has the right permissions
-sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/repositories/
-chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/repositories/
-chmod ug+rwX,o-rwx ${GITLAB_DATA_DIR}/repositories/
-sudo -HEu ${GITLAB_USER} chmod g+s ${GITLAB_DATA_DIR}/repositories/
+mkdir -p ${GITLAB_REPOS_DIR}/
+chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_REPOS_DIR}/
+chmod ug+rwX,o-rwx ${GITLAB_REPOS_DIR}/
+sudo -HEu ${GITLAB_USER} chmod g+s ${GITLAB_REPOS_DIR}/
 
 # create the satellites directory and make sure it has the right permissions
-sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/gitlab-satellites/
+mkdir -p ${GITLAB_DATA_DIR}/gitlab-satellites/
 chmod u+rwx,g=rx,o-rwx ${GITLAB_DATA_DIR}/gitlab-satellites
 chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/gitlab-satellites
 
@@ -664,12 +735,12 @@ mkdir -p ${GITLAB_BACKUP_DIR}
 chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_BACKUP_DIR}
 
 # create the uploads directory
-sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/uploads/
+mkdir -p ${GITLAB_DATA_DIR}/uploads/
 chmod -R u+rwX ${GITLAB_DATA_DIR}/uploads/
 chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/uploads/
 
 # create the .ssh directory
-sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/.ssh/
+mkdir -p ${GITLAB_DATA_DIR}/.ssh/
 touch ${GITLAB_DATA_DIR}/.ssh/authorized_keys
 chmod 700 ${GITLAB_DATA_DIR}/.ssh
 chmod 600 ${GITLAB_DATA_DIR}/.ssh/authorized_keys
@@ -714,7 +785,7 @@ appInit () {
   esac
   if [[ -z ${COUNT} || ${COUNT} -eq 0 ]]; then
     echo "Setting up GitLab for firstrun. Please be patient, this could take a while..."
-    sudo -HEu ${GITLAB_USER} force=yes bundle exec rake gitlab:setup RAILS_ENV=production ${GITLAB_ROOT_PASSWORD:+GITLAB_ROOT_PASSWORD=$GITLAB_ROOT_PASSWORD} >/dev/null
+    sudo -HEu ${GITLAB_USER} force=yes bundle exec rake gitlab:setup ${GITLAB_ROOT_PASSWORD:+GITLAB_ROOT_PASSWORD=$GITLAB_ROOT_PASSWORD} >/dev/null
   fi
 
   # migrate database and compile the assets if the gitlab version or relative_url has changed.
@@ -723,7 +794,7 @@ appInit () {
   [[ -f tmp/cache/GITLAB_RELATIVE_URL_ROOT ]] && CACHE_GITLAB_RELATIVE_URL_ROOT=$(cat tmp/cache/GITLAB_RELATIVE_URL_ROOT)
   if [[ ${GITLAB_VERSION} != ${CACHE_VERSION} || ${GITLAB_RELATIVE_URL_ROOT} != ${CACHE_GITLAB_RELATIVE_URL_ROOT} ]]; then
     echo "Migrating database..."
-    sudo -HEu ${GITLAB_USER} bundle exec rake db:migrate RAILS_ENV=production >/dev/null
+    sudo -HEu ${GITLAB_USER} bundle exec rake db:migrate >/dev/null
 
     # recreate the tmp directory
     rm -rf ${GITLAB_DATA_DIR}/tmp
@@ -735,8 +806,8 @@ appInit () {
     sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/tmp/public/assets/
 
     echo "Compiling assets. Please be patient, this could take a while..."
-    sudo -HEu ${GITLAB_USER} bundle exec rake assets:clean RAILS_ENV=production >/dev/null 2>&1
-    sudo -HEu ${GITLAB_USER} bundle exec rake assets:precompile RAILS_ENV=production >/dev/null 2>&1
+    sudo -HEu ${GITLAB_USER} bundle exec rake assets:clean >/dev/null 2>&1
+    sudo -HEu ${GITLAB_USER} bundle exec rake assets:precompile >/dev/null 2>&1
     sudo -HEu ${GITLAB_USER} touch tmp/cache/VERSION
     sudo -HEu ${GITLAB_USER} echo "${GITLAB_VERSION}" > tmp/cache/VERSION
     sudo -HEu ${GITLAB_USER} echo "${GITLAB_RELATIVE_URL_ROOT}" > tmp/cache/GITLAB_RELATIVE_URL_ROOT
@@ -757,19 +828,19 @@ appInit () {
         daily)
           sudo -HEu ${GITLAB_USER} cat > /tmp/cron.${GITLAB_USER} <<EOF
 # Automatic Backups: daily
-$min $hour * * * /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=production'
+$min $hour * * * /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=${RAILS_ENV}'
 EOF
           ;;
         weekly)
           sudo -HEu ${GITLAB_USER} cat > /tmp/cron.${GITLAB_USER} <<EOF
 # Automatic Backups: weekly
-$min $hour * * 0 /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=production'
+$min $hour * * 0 /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=${RAILS_ENV}'
 EOF
           ;;
         monthly)
           sudo -HEu ${GITLAB_USER} cat > /tmp/cron.${GITLAB_USER} <<EOF
 # Automatic Backups: monthly
-$min $hour 01 * * /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=production'
+$min $hour 01 * * /bin/bash -l -c 'cd ${GITLAB_INSTALL_DIR} && bundle exec rake gitlab:backup:create RAILS_ENV=${RAILS_ENV}'
 EOF
           ;;
       esac
@@ -787,10 +858,10 @@ appStart () {
 
 appSanitize () {
   echo "Checking repository directories permissions..."
-  chmod -R ug+rwX,o-rwx ${GITLAB_DATA_DIR}/repositories/
-  chmod -R ug-s ${GITLAB_DATA_DIR}/repositories/
-  find ${GITLAB_DATA_DIR}/repositories/ -type d -print0 | xargs -0 chmod g+s
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/repositories
+  chmod -R ug+rwX,o-rwx ${GITLAB_REPOS_DIR}/
+  chmod -R ug-s ${GITLAB_REPOS_DIR}/
+  find ${GITLAB_REPOS_DIR}/ -type d -print0 | xargs -0 chmod g+s
+  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_REPOS_DIR}
 
   echo "Checking satellites directories permissions..."
   sudo -HEu ${GITLAB_USER} mkdir -p ${GITLAB_DATA_DIR}/gitlab-satellites/
@@ -812,20 +883,18 @@ appRake () {
     return 1
   fi
 
-  echo "Running gitlab rake task..."
-
   if [[ ${1} == gitlab:backup:restore ]]; then
-    # check if the BACKUP argument is specified
-    for a in $@
+    interactive=true
+    for arg in $@
     do
-      if [[ $a == BACKUP=* ]]; then
-        timestamp=${a:7}
+      if [[ $arg == BACKUP=* ]]; then
+        interactive=false
         break
       fi
     done
 
-    if [[ -z ${timestamp} ]]; then
-      # user needs to select the backup to restore
+    # user needs to select the backup to restore
+    if [[ $interactive == true ]]; then
       nBackups=$(ls ${GITLAB_BACKUP_DIR}/*_gitlab_backup.tar | wc -l)
       if [[ $nBackups -eq 0 ]]; then
         echo "No backup present. Cannot continue restore process.".
@@ -842,13 +911,15 @@ appRake () {
         echo "Specified backup does not exist. Aborting..."
         return 1
       fi
-      timestamp=$(echo $file | cut -d'_' -f1)
+      BACKUP=$(echo $file | cut -d'_' -f1)
     fi
-    sudo -HEu ${GITLAB_USER} bundle exec rake gitlab:backup:restore BACKUP=$timestamp RAILS_ENV=production
-  else
-    [[ ${1} == gitlab:import:repos ]] && appSanitize
-    sudo -HEu ${GITLAB_USER} bundle exec rake $@ RAILS_ENV=production
+  elif [[ ${1} == gitlab:import:repos ]]; then
+    # sanitize the data volume to ensure there are no permission issues
+    appSanitize
   fi
+
+  echo "Running \"${1}\" rake task ..."
+  sudo -HEu ${GITLAB_USER} bundle exec rake $@ ${BACKUP:+BACKUP=$BACKUP}
 }
 
 appHelp () {

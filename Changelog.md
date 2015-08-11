@@ -2,6 +2,23 @@
 
 This file only reflects the changes that are made in the the docker image. Please refer to the upstream GitLab [CHANGELOG](https://github.com/gitlabhq/gitlabhq/blob/master/CHANGELOG) for the list of changes in GitLab.
 
+**7.13.4**
+- gitlab: upgrade to CE v.7.13.4
+
+**7.13.3**
+- gitlab: upgrade to CE v.7.13.3
+
+**7.13.2**
+- gitlab: upgrade to CE v.7.13.2
+
+**7.13.1**
+- gitlab: upgrade to CE v.7.13.1
+
+**7.13.0**
+- expose SAML OAuth provider configuration
+- expose `OAUTH_AUTO_SIGN_IN_WITH_PROVIDER` configuration
+- gitlab: upgrade to CE v.7.13.0
+
 **7.12.2-2**
 - enable persistence `.secret` file used in 2FA
 
