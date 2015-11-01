@@ -1,8 +1,9 @@
-FROM sameersbn/ubuntu:14.04.20150825
+FROM quay.io/sameersbn/ubuntu:14.04.20151023
 MAINTAINER sameer@damagehead.com
 
-ENV GITLAB_VERSION=8.0.3 \
+ENV GITLAB_VERSION=8.1.2 \
     GITLAB_SHELL_VERSION=2.6.5 \
+    GITLAB_GIT_HTTP_SERVER_VERSION=0.3.0 \
     GITLAB_USER="git" \
     GITLAB_HOME="/home/git" \
     GITLAB_LOG_DIR="/var/log/gitlab" \
@@ -23,7 +24,7 @@ RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv E1DD270288B4E60
  && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
  && echo 'deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update \
- && apt-get install -y supervisor logrotate locales curl \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y supervisor logrotate locales curl \
       nginx openssh-server mysql-client postgresql-client redis-tools \
       git-core ruby2.1 python2.7 python-docutils nodejs \
       libmysqlclient18 libpq5 zlib1g libyaml-0-2 libssl1.0.0 \

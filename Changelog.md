@@ -2,6 +2,40 @@
 
 This file only reflects the changes that are made in the the docker image. Please refer to the upstream GitLab [CHANGELOG](https://github.com/gitlabhq/gitlabhq/blob/master/CHANGELOG) for the list of changes in GitLab.
 
+**latest**
+- proper long-term fix for http/https cloning when `GITLAB_RELATIVE_URL_ROOT` is used
+
+**8.1.2**
+- gitlab: upgrade to CE v8.1.2
+- removed `GITLAB_SATELLITES_TIMEOUT` configuration parameter
+
+**8.1.0-2**
+- Recompile assets when `GITLAB_RELATIVE_URL_ROOT` is used Fixes #481
+
+**8.1.0-1**
+- temporary fix for http/https cloning when `GITLAB_RELATIVE_URL_ROOT` is used
+
+**8.1.0**
+- gitlab: upgrade to CE v8.1.0
+- gitlab-git-http-server: upgrade to v0.3.0
+
+**8.0.5-1**
+- speed up container startup by compiling assets at image build time
+- test connection to redis-server
+
+**8.0.5**
+- gitlab: upgrade to CE v.8.0.5
+
+**8.0.4-2**
+- fix http/https cloning when `GITLAB_RELATIVE_URL_ROOT` is used
+- allow user to override `OAUTH_ENABLED` setting
+
+**8.0.4-1**
+- update baseimage to `sameersbn/ubuntu:14.04.20151011`
+
+**8.0.4**
+- gitlab: upgrade to CE v.8.0.4
+
 **8.0.3**
 - gitlab: upgrade to CE v.8.0.3
 
