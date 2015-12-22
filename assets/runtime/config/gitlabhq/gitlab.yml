@@ -40,7 +40,7 @@ production: &base
 
     # WARNING: See config/application.rb under "Relative url support" for the list of
     # other files that need to be changed for relative url support
-    # relative_url_root: {{GITLAB_RELATIVE_URL_ROOT}}
+    relative_url_root: {{GITLAB_RELATIVE_URL_ROOT}}
 
     # Uncomment and customize if you can't use the default user to run GitLab (default: 'git')
     # user: git
@@ -76,7 +76,7 @@ production: &base
     # This happens when the commit is pushed or merged into the default branch of a project.
     # When not specified the default issue_closing_pattern as specified below will be used.
     # Tip: you can test your closing pattern at http://rubular.com.
-    # issue_closing_pattern: '((?:[Cc]los(?:e[sd]?|ing)|[Ff]ix(?:e[sd]|ing)?) +(?:(?:issues? +)?#\d+(?:(?:, *| +and +)?))+)'
+    # issue_closing_pattern: '((?:[Cc]los(?:e[sd]?|ing)|[Ff]ix(?:e[sd]|ing)?) +(?:(?:issues? +)?%{issue_ref}(?:(?:, *| +and +)?))+)'
 
     ## Default project features settings
     default_projects_features:
@@ -84,6 +84,7 @@ production: &base
       merge_requests: {{GITLAB_PROJECTS_MERGE_REQUESTS}}
       wiki: {{GITLAB_PROJECTS_WIKI}}
       snippets: {{GITLAB_PROJECTS_SNIPPETS}}
+      builds: {{GITLAB_PROJECTS_BUILDS}}
 
     ## Webhook settings
     # Number of seconds to wait for HTTP response after sending webhook HTTP POST request (default: 10)
@@ -92,7 +93,7 @@ production: &base
     ## Repository downloads directory
     # When a user clicks e.g. 'Download zip' on a project, a temporary zip file is created in the following directory.
     # The default is 'tmp/repositories' relative to the root of the Rails app.
-    # repository_downloads_path: tmp/repositories
+    repository_downloads_path: {{GITLAB_DOWNLOADS_DIR}}
 
   ## Reply by email
   # Allow users to comment on issues and merge requests by replying to notification emails.
@@ -122,6 +123,18 @@ production: &base
 
     # The mailbox where incoming mail will end up. Usually "inbox".
     mailbox: "{{IMAP_MAILBOX}}"
+
+  ## Build Artifacts
+  artifacts:
+    enabled: {{GITLAB_ARTIFACTS_ENABLED}}
+    # The location where build artifacts are stored (default: shared/artifacts).
+    path: {{GITLAB_ARTIFACTS_DIR}}
+
+  ## Git LFS
+  lfs:
+    enabled: {{GITLAB_LFS_ENABLED}}
+    # The location where LFS objects are stored (default: shared/lfs-objects).
+    storage_path: {{GITLAB_LFS_OBJECTS_DIR}}
 
   ## Gravatar
   ## For Libravatar see: http://doc.gitlab.com/ce/customization/libravatar.html
@@ -274,29 +287,32 @@ production: &base
     # arguments, followed by optional 'args' which can be either a hash or an array.
     # Documentation for this is available at http://doc.gitlab.com/ce/integration/omniauth.html
     providers:
-      - { name: 'google_oauth2',
-          label: 'Google',
-          app_id: '{{OAUTH_GOOGLE_API_KEY}}',
-          app_secret: '{{OAUTH_GOOGLE_APP_SECRET}}',
-          args: { access_type: 'offline', approval_prompt: '{{OAUTH_GOOGLE_APPROVAL_PROMPT}}', hd: '{{OAUTH_GOOGLE_RESTRICT_DOMAIN}}' } }
-      - { name: 'twitter',
-          app_id: '{{OAUTH_TWITTER_API_KEY}}',
-          app_secret: '{{OAUTH_TWITTER_APP_SECRET}}' }
       - { name: 'github',
           label: 'GitHub',
           app_id: '{{OAUTH_GITHUB_API_KEY}}',
           app_secret: '{{OAUTH_GITHUB_APP_SECRET}}',
           args: { scope: '{{OAUTH_GITHUB_SCOPE}}' } }
+      - { name: 'bitbucket',
+          app_id: '{{OAUTH_BITBUCKET_API_KEY}}',
+          app_secret: '{{OAUTH_BITBUCKET_APP_SECRET}}' }
       - { name: 'gitlab',
           label: 'GitLab.com',
           app_id: '{{OAUTH_GITLAB_API_KEY}}',
           app_secret: '{{OAUTH_GITLAB_APP_SECRET}}',
           args: { scope: '{{OAUTH_GITLAB_SCOPE}}' } }
-      - { name: 'bitbucket',
-          app_id: '{{OAUTH_BITBUCKET_API_KEY}}',
-          app_secret: '{{OAUTH_BITBUCKET_APP_SECRET}}' }
+      - { name: 'google_oauth2',
+          label: 'Google',
+          app_id: '{{OAUTH_GOOGLE_API_KEY}}',
+          app_secret: '{{OAUTH_GOOGLE_APP_SECRET}}',
+          args: { access_type: 'offline', approval_prompt: '{{OAUTH_GOOGLE_APPROVAL_PROMPT}}', hd: '{{OAUTH_GOOGLE_RESTRICT_DOMAIN}}' } }
+      - { name: 'facebook',
+          app_id: '{{OAUTH_FACEBOOK_API_KEY}}',
+          app_secret: '{{OAUTH_FACEBOOK_APP_SECRET}}' }
+      - { name: 'twitter',
+          app_id: '{{OAUTH_TWITTER_API_KEY}}',
+          app_secret: '{{OAUTH_TWITTER_APP_SECRET}}' }
       - { name: 'saml',
-          label: 'Our SAML Provider',
+          label: '{{OAUTH_SAML_LABEL}}',
           args: {
                   assertion_consumer_service_url: '{{OAUTH_SAML_ASSERTION_CONSUMER_SERVICE_URL}}',
                   idp_cert_fingerprint: '{{OAUTH_SAML_IDP_CERT_FINGERPRINT}}',
@@ -310,6 +326,9 @@ production: &base
             application_password: '{{OAUTH_CROWD_APP_PASSWORD}}' } }
 
 
+  # Shared file storage settings
+  shared:
+    path: {{GITLAB_SHARED_DIR}}
 
 
   #
@@ -329,7 +348,7 @@ production: &base
     path: "{{GITLAB_BACKUP_DIR}}"   # Relative paths are relative to Rails.root (default: tmp/backups/)
     archive_permissions: {{GITLAB_BACKUP_ARCHIVE_PERMISSIONS}} # Permissions for the resulting backup.tar file (default: 0600)
     keep_time: {{GITLAB_BACKUP_EXPIRY}}   # default: 0 (forever) (in seconds)
-    # pg_schema: public     # default: nil, it means that all schemas will be backed up
+    pg_schema: {{GITLAB_BACKUP_PG_SCHEMA}}     # default: nil, it means that all schemas will be backed up
     upload:
       # Fog storage connection settings, see http://fog.io/storage/ .
       connection:
@@ -372,7 +391,7 @@ production: &base
     # The next value is the maximum memory size grit can use
     # Given in number of bytes per git object (e.g. a commit)
     # This value can be increased if you have very large commits
-    max_size: {{GITLAB_MAX_SIZE}} # 20.megabytes
+    max_size: {{GITLAB_MAX_OBJECT_SIZE}} # 20.megabytes
     # Git timeout to read a commit, in seconds
     timeout: {{GITLAB_TIMEOUT}}
 
@@ -391,19 +410,19 @@ production: &base
   rack_attack:
     git_basic_auth:
       # Rack Attack IP banning enabled
-      # enabled: true
+      enabled: {{RACK_ATTACK_ENABLED}}
       #
       # Whitelist requests from 127.0.0.1 for web proxies (NGINX/Apache) with incorrect headers
-      # ip_whitelist: ["127.0.0.1"]
+      ip_whitelist: [{{RACK_ATTACK_WHITELIST}}]
       #
       # Limit the number of Git HTTP authentication attempts per IP
-      # maxretry: 10
+      maxretry: {{RACK_ATTACK_MAXRETRY}}
       #
       # Reset the auth attempt counter per IP after 60 seconds
-      # findtime: 60
+      findtime: {{RACK_ATTACK_FINDTIME}}
       #
       # Ban an IP for one hour (3600s) after too many auth attempts
-      # bantime: 3600
+      bantime: {{RACK_ATTACK_BANTIME}}
 
 development:
   <<: *base
@@ -412,6 +431,8 @@ test:
   <<: *base
   gravatar:
     enabled: true
+  lfs:
+    enabled: false
   gitlab:
     host: localhost
     port: 80
