@@ -8,7 +8,7 @@ USERCONF_TEMPLATES_DIR="${GITLAB_DATA_DIR}/config"
 GITLAB_CONFIG="${GITLAB_INSTALL_DIR}/config/gitlab.yml"
 GITLAB_DATABASE_CONFIG="${GITLAB_INSTALL_DIR}/config/database.yml"
 GITLAB_UNICORN_CONFIG="${GITLAB_INSTALL_DIR}/config/unicorn.rb"
-GITLAB_RACK_ATTACK_CONFIG="${GITLAB_INSTALL_DIR}/config/rack_attack.rb"
+GITLAB_RACK_ATTACK_CONFIG="${GITLAB_INSTALL_DIR}/config/initializers/rack_attack.rb"
 GITLAB_SMTP_CONFIG="${GITLAB_INSTALL_DIR}/config/initializers/smtp_settings.rb"
 GITLAB_RESQUE_CONFIG="${GITLAB_INSTALL_DIR}/config/resque.yml"
 GITLAB_SECRETS_CONFIG="${GITLAB_INSTALL_DIR}/config/secrets.yml"
@@ -17,9 +17,25 @@ GITLAB_SHELL_CONFIG="${GITLAB_SHELL_INSTALL_DIR}/config.yml"
 GITLAB_NGINX_CONFIG="/etc/nginx/sites-enabled/gitlab"
 GITLAB_CI_NGINX_CONFIG="/etc/nginx/sites-enabled/gitlab_ci"
 
+# Compares two version strings `a` and `b`
+# Returns
+#   - negative integer, if `a` is less than `b`
+#   - 0, if `a` and `b` are equal
+#   - non-negative integer, if `a` is greater than `b`
+vercmp() {
+  expr '(' "$1" : '\([^.]*\)' ')' '-' '(' "$2" : '\([^.]*\)' ')' '|' \
+       '(' "$1.0" : '[^.]*[.]\([^.]*\)' ')' '-' '(' "$2.0" : '[^.]*[.]\([^.]*\)' ')' '|' \
+       '(' "$1.0.0" : '[^.]*[.][^.]*[.]\([^.]*\)' ')' '-' '(' "$2.0.0" : '[^.]*[.][^.]*[.]\([^.]*\)' ')' '|' \
+       '(' "$1.0.0.0" : '[^.]*[.][^.]*[.][^.]*[.]\([^.]*\)' ')' '-' '(' "$2.0.0.0" : '[^.]*[.][^.]*[.][^.]*[.]\([^.]*\)' ')'
+}
+
 ## Execute a command as GITLAB_USER
 exec_as_git() {
-  sudo -HEu ${GITLAB_USER} "$@"
+  if [[ $(whoami) == ${GITLAB_USER} ]]; then
+    $@
+  else
+    sudo -HEu ${GITLAB_USER} "$@"
+  fi
 }
 
 ## Copies configuration template to the destination as the specified USER
@@ -29,16 +45,17 @@ exec_as_git() {
 # $3: destination location
 # $4: mode of destination
 install_template() {
-  local USR=${1}
+  local OWNERSHIP=${1}
   local SRC=${2}
   local DEST=${3}
   local MODE=${4:-0644}
   if [[ -f ${USERCONF_TEMPLATES_DIR}/${SRC} ]]; then
-    sudo -HEu ${USR} cp ${USERCONF_TEMPLATES_DIR}/${SRC} ${DEST}
+    cp ${USERCONF_TEMPLATES_DIR}/${SRC} ${DEST}
   elif [[ -f ${SYSCONF_TEMPLATES_DIR}/${SRC} ]]; then
-    sudo -HEu ${USR} cp ${SYSCONF_TEMPLATES_DIR}/${SRC} ${DEST}
+    cp ${SYSCONF_TEMPLATES_DIR}/${SRC} ${DEST}
   fi
   chmod ${MODE} ${DEST}
+  chown ${OWNERSHIP} ${DEST}
 }
 
 ## Replace placeholders with values
@@ -96,7 +113,8 @@ gitlab_finalize_database_parameters() {
     # support for linked official postgres image
     DB_USER=${DB_USER:-${POSTGRESQL_ENV_POSTGRES_USER}}
     DB_PASS=${DB_PASS:-${POSTGRESQL_ENV_POSTGRES_PASSWORD}}
-    DB_NAME=${DB_NAME:-${DB_USER}}
+    DB_NAME=${DB_NAME:-${POSTGRESQL_ENV_POSTGRES_DB}}
+    DB_NAME=${DB_NAME:-${POSTGRESQL_ENV_POSTGRES_USER}}
 
     # support for linked sameersbn/postgresql image
     DB_USER=${DB_USER:-${POSTGRESQL_ENV_DB_USER}}
@@ -375,12 +393,29 @@ gitlab_configure_ldap() {
     LDAP_METHOD \
     LDAP_BIND_DN \
     LDAP_PASS \
+    LDAP_TIMEOUT \
     LDAP_ACTIVE_DIRECTORY \
     LDAP_ALLOW_USERNAME_OR_EMAIL_LOGIN \
     LDAP_BLOCK_AUTO_CREATED_USERS \
     LDAP_BASE \
     LDAP_USER_FILTER \
     LDAP_LABEL
+}
+
+gitlab_configure_oauth_cas3() {
+  if [[ -n ${OAUTH_CAS3_SERVER} ]]; then
+    echo "Configuring gitlab::oauth::cas3..."
+    OAUTH_ENABLED=${OAUTH_ENABLED:-true}
+    update_template ${GITLAB_CONFIG} \
+      OAUTH_CAS3_LABEL \
+      OAUTH_CAS3_SERVER \
+      OAUTH_CAS3_DISABLE_SSL_VERIFICATION \
+      OAUTH_CAS3_LOGIN_URL \
+      OAUTH_CAS3_VALIDATE_URL \
+      OAUTH_CAS3_LOGOUT_URL
+  else
+    exec_as_git sed -i "/name: 'cas3'/,/{{OAUTH_CAS3_LOGOUT_URL}}/d" ${GITLAB_CONFIG}
+  fi
 }
 
 gitlab_configure_oauth_google() {
@@ -494,9 +529,25 @@ gitlab_configure_oauth_crowd() {
   fi
 }
 
+gitlab_configure_oauth_azure() {
+  if [[ -n ${OAUTH_AZURE_API_KEY} && \
+        -n ${OAUTH_AZURE_API_SECRET} && \
+        -n ${OAUTH_AZURE_TENANT_ID} ]]; then
+    echo "Configuring gitlab::oauth::azure..."
+    OAUTH_ENABLED=${OAUTH_ENABLED:-true}
+    update_template ${GITLAB_CONFIG} \
+      OAUTH_AZURE_API_KEY \
+      OAUTH_AZURE_API_SECRET \
+      OAUTH_AZURE_TENANT_ID
+  else
+    exec_as_git sed -i "/name: 'azure_oauth2'/,/{{OAUTH_AZURE_TENANT_ID}}/d" ${GITLAB_CONFIG}
+  fi
+}
+
 gitlab_configure_oauth() {
   echo "Configuring gitlab::oauth..."
 
+  gitlab_configure_oauth_cas3
   gitlab_configure_oauth_google
   gitlab_configure_oauth_facebook
   gitlab_configure_oauth_twitter
@@ -505,6 +556,7 @@ gitlab_configure_oauth() {
   gitlab_configure_oauth_bitbucket
   gitlab_configure_oauth_saml
   gitlab_configure_oauth_crowd
+  gitlab_configure_oauth_azure
 
   OAUTH_ENABLED=${OAUTH_ENABLED:-false}
   update_template ${GITLAB_CONFIG} \
@@ -514,7 +566,7 @@ gitlab_configure_oauth() {
     OAUTH_AUTO_LINK_LDAP_USER
 
   case ${OAUTH_AUTO_SIGN_IN_WITH_PROVIDER} in
-    google_oauth2|facebook|twitter|github|gitlab|bitbucket|saml|crowd)
+    cas3|google_oauth2|facebook|twitter|github|gitlab|bitbucket|saml|crowd|azure_oauth2)
       update_template ${GITLAB_CONFIG} OAUTH_AUTO_SIGN_IN_WITH_PROVIDER
       ;;
     *)
@@ -729,8 +781,15 @@ nginx_configure_gitlab_hsts() {
 nginx_configure_gitlab_relative_url() {
   if [[ -n ${GITLAB_RELATIVE_URL_ROOT} ]]; then
     echo "Configuring nginx::gitlab::relative_url..."
+    GITLAB_RELATIVE_URL_ROOT__with_trailing_slash=${GITLAB_RELATIVE_URL_ROOT}/
+    GITLAB_RELATIVE_URL_ROOT__without_trailing_slash=${GITLAB_RELATIVE_URL_ROOT}
+  else
+    GITLAB_RELATIVE_URL_ROOT__with_trailing_slash=/
+    GITLAB_RELATIVE_URL_ROOT__without_trailing_slash=/
   fi
-  update_template ${GITLAB_NGINX_CONFIG} GITLAB_RELATIVE_URL_ROOT__with_trailing_slash
+  update_template ${GITLAB_NGINX_CONFIG} \
+    GITLAB_RELATIVE_URL_ROOT__with_trailing_slash \
+    GITLAB_RELATIVE_URL_ROOT__without_trailing_slash
 }
 
 nginx_configure_gitlab_ipv6() {
@@ -787,7 +846,7 @@ map_uidgid() {
     echo "Mapping UID and GID for ${GITLAB_USER}:${GITLAB_USER} to $USERMAP_UID:$USERMAP_GID"
     groupmod -g ${USERMAP_GID} ${GITLAB_USER}
     sed -i -e "s|:${USERMAP_ORIG_UID}:${USERMAP_GID}:|:${USERMAP_UID}:${USERMAP_GID}:|" /etc/passwd
-    find ${GITLAB_HOME} -path ${GITLAB_DATA_DIR}/\* -prune -o -print0 | xargs -0 chown -h ${GITLAB_USER}:${GITLAB_USER}
+    find ${GITLAB_HOME} -path ${GITLAB_DATA_DIR}/\* -prune -o -print0 | xargs -0 chown -h ${GITLAB_USER}:
   fi
 }
 
@@ -804,40 +863,40 @@ initialize_logdir() {
   echo "Initializing logdir..."
   mkdir -p ${GITLAB_LOG_DIR}/supervisor
   chmod -R 0755 ${GITLAB_LOG_DIR}/supervisor
-  chown -R root:root ${GITLAB_LOG_DIR}/supervisor
+  chown -R root: ${GITLAB_LOG_DIR}/supervisor
 
   mkdir -p ${GITLAB_LOG_DIR}/nginx
   chmod -R 0755 ${GITLAB_LOG_DIR}/nginx
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_LOG_DIR}/nginx
+  chown -R ${GITLAB_USER}: ${GITLAB_LOG_DIR}/nginx
 
   mkdir -p ${GITLAB_LOG_DIR}/gitlab
   chmod -R 0755 ${GITLAB_LOG_DIR}/gitlab
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_LOG_DIR}/gitlab
+  chown -R ${GITLAB_USER}: ${GITLAB_LOG_DIR}/gitlab
 
   mkdir -p ${GITLAB_LOG_DIR}/gitlab-shell
   chmod -R 0755 ${GITLAB_LOG_DIR}/gitlab-shell
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_LOG_DIR}/gitlab-shell
+  chown -R ${GITLAB_USER}: ${GITLAB_LOG_DIR}/gitlab-shell
 }
 
 initialize_datadir() {
   echo "Initializing datadir..."
   chmod 755 ${GITLAB_DATA_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_DATA_DIR}
 
   # create the ssh directory for server keys
   mkdir -p ${GITLAB_DATA_DIR}/ssh
-  chown -R root:root ${GITLAB_DATA_DIR}/ssh
+  chown -R root: ${GITLAB_DATA_DIR}/ssh
 
   # create the repositories directory and make sure it has the right permissions
   mkdir -p ${GITLAB_REPOS_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_REPOS_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_REPOS_DIR}
   chmod ug+rwX,o-rwx ${GITLAB_REPOS_DIR}
   exec_as_git chmod g+s ${GITLAB_REPOS_DIR}
 
   # create build traces directory
   mkdir -p ${GITLAB_BUILDS_DIR}
   chmod u+rwX ${GITLAB_BUILDS_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_BUILDS_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_BUILDS_DIR}
 
   # gitlab:backup:create does not respect the builds_path configuration, so we
   # symlink ${GITLAB_INSTALL_DIR}/builds -> ${GITLAB_BUILDS_DIR}
@@ -847,16 +906,16 @@ initialize_datadir() {
   # create downloads directory
   mkdir -p ${GITLAB_DOWNLOADS_DIR}
   chmod u+rwX ${GITLAB_DOWNLOADS_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DOWNLOADS_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_DOWNLOADS_DIR}
 
   # create shared directory
   mkdir -p ${GITLAB_SHARED_DIR}
   chmod u+rwX ${GITLAB_SHARED_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_SHARED_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_SHARED_DIR}
 
   mkdir -p ${GITLAB_ARTIFACTS_DIR}
   chmod u+rwX ${GITLAB_ARTIFACTS_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_ARTIFACTS_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_ARTIFACTS_DIR}
 
   # symlink ${GITLAB_INSTALL_DIR}/shared -> ${GITLAB_DATA_DIR}/shared
   rm -rf ${GITLAB_INSTALL_DIR}/shared
@@ -865,23 +924,23 @@ initialize_datadir() {
   # create lfs-objects directory
   mkdir -p ${GITLAB_LFS_OBJECTS_DIR}
   chmod u+rwX ${GITLAB_LFS_OBJECTS_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_LFS_OBJECTS_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_LFS_OBJECTS_DIR}
 
   # create the backups directory
   mkdir -p ${GITLAB_BACKUP_DIR}
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_BACKUP_DIR}
+  chown ${GITLAB_USER}: ${GITLAB_BACKUP_DIR}
 
   # create the uploads directory
   mkdir -p ${GITLAB_DATA_DIR}/uploads
   chmod 0750 ${GITLAB_DATA_DIR}/uploads
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/uploads
+  chown ${GITLAB_USER}: ${GITLAB_DATA_DIR}/uploads
 
   # create the .ssh directory
   mkdir -p ${GITLAB_DATA_DIR}/.ssh
   touch ${GITLAB_DATA_DIR}/.ssh/authorized_keys
   chmod 700 ${GITLAB_DATA_DIR}/.ssh
   chmod 600 ${GITLAB_DATA_DIR}/.ssh/authorized_keys
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/.ssh
+  chown -R ${GITLAB_USER}: ${GITLAB_DATA_DIR}/.ssh
 }
 
 sanitize_datadir() {
@@ -889,27 +948,30 @@ sanitize_datadir() {
   chmod -R ug+rwX,o-rwx ${GITLAB_REPOS_DIR}/
   chmod -R ug-s ${GITLAB_REPOS_DIR}/
   find ${GITLAB_REPOS_DIR}/ -type d -print0 | xargs -0 chmod g+s
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_REPOS_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_REPOS_DIR}
 
   chmod -R u+rwX ${GITLAB_BUILDS_DIR}
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_BUILDS_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_BUILDS_DIR}
 
   chmod -R u+rwX ${GITLAB_DOWNLOADS_DIR}
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DOWNLOADS_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_DOWNLOADS_DIR}
+
+  chmod -R u+rwX ${GITLAB_TEMP_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_TEMP_DIR}
 
   chmod -R u+rwX ${GITLAB_SHARED_DIR}
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_SHARED_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_SHARED_DIR}
 
   chmod -R u+rwX ${GITLAB_ARTIFACTS_DIR}
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_ARTIFACTS_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_ARTIFACTS_DIR}
 
   chmod -R u+rwX ${GITLAB_LFS_OBJECTS_DIR}
-  chown -R ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_LFS_OBJECTS_DIR}
+  chown -R ${GITLAB_USER}: ${GITLAB_LFS_OBJECTS_DIR}
 
   find ${GITLAB_DATA_DIR}/uploads -type f -exec chmod 0644 {} \;
   find ${GITLAB_DATA_DIR}/uploads -type d -not -path ${GITLAB_DATA_DIR}/uploads -exec chmod 0755 {} \;
   chmod 0750 ${GITLAB_DATA_DIR}/uploads/
-  chown ${GITLAB_USER}:${GITLAB_USER} ${GITLAB_DATA_DIR}/uploads/
+  chown ${GITLAB_USER}: ${GITLAB_DATA_DIR}/uploads/
 
   echo "Creating gitlab-shell hooks..."
   exec_as_git ${GITLAB_SHELL_INSTALL_DIR}/bin/create-hooks
@@ -949,16 +1011,16 @@ initialize_system() {
 
 install_configuration_templates() {
   echo "Installing configuration templates..."
-  install_template ${GITLAB_USER} gitlabhq/gitlab.yml ${GITLAB_CONFIG} 0640
-  install_template ${GITLAB_USER} gitlabhq/database.yml ${GITLAB_DATABASE_CONFIG} 0640
-  install_template ${GITLAB_USER} gitlabhq/unicorn.rb ${GITLAB_UNICORN_CONFIG} 0644
-  install_template ${GITLAB_USER} gitlabhq/rack_attack.rb ${GITLAB_RACK_ATTACK_CONFIG} 0644
-  install_template ${GITLAB_USER} gitlabhq/resque.yml ${GITLAB_RESQUE_CONFIG} 0640
-  install_template ${GITLAB_USER} gitlabhq/secrets.yml ${GITLAB_SECRETS_CONFIG} 0600
-  install_template ${GITLAB_USER} gitlab-shell/config.yml ${GITLAB_SHELL_CONFIG} 0640
+  install_template ${GITLAB_USER}: gitlabhq/gitlab.yml ${GITLAB_CONFIG} 0640
+  install_template ${GITLAB_USER}: gitlabhq/database.yml ${GITLAB_DATABASE_CONFIG} 0640
+  install_template ${GITLAB_USER}: gitlabhq/unicorn.rb ${GITLAB_UNICORN_CONFIG} 0644
+  install_template ${GITLAB_USER}: gitlabhq/rack_attack.rb ${GITLAB_RACK_ATTACK_CONFIG} 0644
+  install_template ${GITLAB_USER}: gitlabhq/resque.yml ${GITLAB_RESQUE_CONFIG} 0640
+  install_template ${GITLAB_USER}: gitlabhq/secrets.yml ${GITLAB_SECRETS_CONFIG} 0600
+  install_template ${GITLAB_USER}: gitlab-shell/config.yml ${GITLAB_SHELL_CONFIG} 0640
 
   if [[ ${SMTP_ENABLED} == true  ]]; then
-    install_template ${GITLAB_USER} gitlabhq/smtp_settings.rb ${GITLAB_SMTP_CONFIG}
+    install_template ${GITLAB_USER}: gitlabhq/smtp_settings.rb ${GITLAB_SMTP_CONFIG}
   fi
 
   # custom user specified robots.txt
@@ -969,18 +1031,18 @@ install_configuration_templates() {
   ## ${GITLAB_NGINX_CONFIG}
   if [[ ${GITLAB_HTTPS} == true ]]; then
     if [[ -f ${SSL_CERTIFICATE_PATH} && -f ${SSL_KEY_PATH} && -f ${SSL_DHPARAM_PATH} ]]; then
-      install_template root nginx/gitlab-ssl ${GITLAB_NGINX_CONFIG}
+      install_template root: nginx/gitlab-ssl ${GITLAB_NGINX_CONFIG}
     else
       echo "SSL keys and certificates were not found."
       echo "Assuming that the container is running behind a HTTPS enabled load balancer."
-      install_template root nginx/gitlab ${GITLAB_NGINX_CONFIG}
+      install_template root: nginx/gitlab ${GITLAB_NGINX_CONFIG}
     fi
   else
-    install_template root nginx/gitlab ${GITLAB_NGINX_CONFIG}
+    install_template root: nginx/gitlab ${GITLAB_NGINX_CONFIG}
   fi
 
   if [[ -n $GITLAB_CI_HOST ]]; then
-    install_template root nginx/gitlab_ci ${GITLAB_CI_NGINX_CONFIG}
+    install_template root: nginx/gitlab_ci ${GITLAB_CI_NGINX_CONFIG}
   fi
 }
 
@@ -1066,12 +1128,41 @@ migrate_database() {
 
   # migrate database if the gitlab version has changed.
   CACHE_VERSION=
-  [[ -f ${GITLAB_DATA_DIR}/tmp/VERSION ]] && CACHE_VERSION=$(cat ${GITLAB_DATA_DIR}/tmp/VERSION)
+  [[ -f ${GITLAB_TEMP_DIR}/VERSION ]] && CACHE_VERSION=$(cat ${GITLAB_TEMP_DIR}/VERSION)
   if [[ ${GITLAB_VERSION} != ${CACHE_VERSION} ]]; then
+    ## version check, only upgrades are allowed
+    if [[ -n ${CACHE_VERSION} && $(vercmp ${GITLAB_VERSION} ${CACHE_VERSION}) -lt 0 ]]; then
+      echo
+      echo "ERROR: "
+      echo "  Cannot downgrade from GitLab version ${CACHE_VERSION} to ${GITLAB_VERSION}."
+      echo "  Only upgrades are allowed. Please use sameersbn/gitlab:${CACHE_VERSION} or higher."
+      echo "  Cannot continue. Aborting!"
+      echo
+      return 1
+    fi
+
+    if [[ $(vercmp ${GITLAB_VERSION} 8.0.0) -gt 0 ]]; then
+      if [[ -n ${CACHE_VERSION} && $(vercmp ${CACHE_VERSION} 8.0.0) -lt 0 ]]; then
+        echo
+        echo "ABORT: "
+        echo "  Upgrading to GitLab ${GITLAB_VERSION} from ${CACHE_VERSION} is not recommended."
+        echo "  Please upgrade to version 8.0.5-1 before upgrading to 8.1.0 or higher."
+        echo "  Refer to https://git.io/vur4j for CI migration instructions."
+        echo "  Aborting for your own safety!"
+        echo
+        return 1
+      fi
+    fi
+
     echo "Migrating database..."
     exec_as_git bundle exec rake db:migrate >/dev/null
-    exec_as_git echo "${GITLAB_VERSION}" > ${GITLAB_DATA_DIR}/tmp/VERSION
-    exec_as_git rm -rf ${GITLAB_DATA_DIR}/tmp/GITLAB_RELATIVE_URL_ROOT # force cache cleanup
+
+    if [[ ${DB_ADAPTER} == mysql2 ]]; then
+      exec_as_git bundle exec rake add_limits_mysql >/dev/null
+    fi
+
+    echo "${GITLAB_VERSION}" > ${GITLAB_TEMP_DIR}/VERSION
+    rm -rf ${GITLAB_TEMP_DIR}/GITLAB_RELATIVE_URL_ROOT # force cache cleanup
   fi
 
   # clear cache if relative_url has changed.
@@ -1079,7 +1170,7 @@ migrate_database() {
   if [[ ! -f ${GITLAB_DATA_DIR}/tmp/GITLAB_RELATIVE_URL_ROOT || ${GITLAB_RELATIVE_URL_ROOT} != ${CACHE_GITLAB_RELATIVE_URL_ROOT} ]]; then
     echo "Clearing cache..."
     exec_as_git bundle exec rake cache:clear >/dev/null 2>&1
-    exec_as_git echo "${GITLAB_RELATIVE_URL_ROOT}" > ${GITLAB_DATA_DIR}/tmp/GITLAB_RELATIVE_URL_ROOT
+    echo "${GITLAB_RELATIVE_URL_ROOT}" > ${GITLAB_TEMP_DIR}/GITLAB_RELATIVE_URL_ROOT
   fi
 }
 
@@ -1108,18 +1199,25 @@ execute_raketask() {
       fi
 
       echo
-      for b in $(ls ${GITLAB_BACKUP_DIR} | grep gitlab_backup | sort -r)
+      for b in $(ls ${GITLAB_BACKUP_DIR} | grep _gitlab_backup | sort -r)
       do
-        echo "‣ $b"
+        echo "‣ $b (created at $(date --date="@${b%%_gitlab_backup.tar}" +'%d %b, %G - %H:%M:%S %Z'))"
       done
       echo
 
       read -p "Select a backup to restore: " file
+
+      if [[ -z ${file} ]]; then
+        echo "Backup not specified. Exiting..."
+        return 1
+      fi
+
       if [[ ! -f ${GITLAB_BACKUP_DIR}/${file} ]]; then
         echo "Specified backup does not exist. Aborting..."
         return 1
       fi
-      BACKUP=$(echo $file | cut -d'_' -f1)
+
+      BACKUP=${file%%_gitlab_backup.tar}
     fi
   elif [[ ${1} == gitlab:import:repos ]]; then
     # sanitize the datadir to avoid permission issues

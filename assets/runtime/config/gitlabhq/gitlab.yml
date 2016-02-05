@@ -4,8 +4,8 @@
 #
 ###########################  NOTE  #####################################
 # This file should not receive new settings. All configuration options #
-# that do not require an application restart are being moved to        #
-# ApplicationSetting model!                                            #
+# * are being moved to ApplicationSetting model!                       #
+# If a setting requires an application restart say so in that screen.  #
 # If you change this file in a Merge Request, please also create       #
 # a MR on https://gitlab.com/gitlab-org/omnibus-gitlab/merge_requests  #
 ########################################################################
@@ -144,6 +144,15 @@ production: &base
     plain_url: "{{GITLAB_GRAVATAR_HTTP_URL}}"     # default: http://www.gravatar.com/avatar/%{hash}?s=%{size}&d=identicon
     ssl_url:   "{{GITLAB_GRAVATAR_HTTPS_URL}}"    # default: https://secure.gravatar.com/avatar/%{hash}?s=%{size}&d=identicon
 
+  ## Auxiliary jobs
+  # Periodically executed jobs, to self-heal Gitlab, do external synchronizations, etc.
+  # Please read here for more information: https://github.com/ondrejbartas/sidekiq-cron#adding-cron-job
+  cron_jobs:
+    # Flag stuck CI builds as failed
+    stuck_ci_builds_worker:
+      cron: "0 0 * * *"
+
+
   #
   # 2. GitLab CI settings
   # ==========================
@@ -194,6 +203,11 @@ production: &base
         method: '{{LDAP_METHOD}}' # "tls" or "ssl" or "plain"
         bind_dn: '{{LDAP_BIND_DN}}'
         password: '{{LDAP_PASS}}'
+
+        # Set a timeout, in seconds, for LDAP queries. This helps avoid blocking
+        # a request if the LDAP server becomes unresponsive.
+        # A value of 0 means there is no timeout.
+        timeout: {{LDAP_TIMEOUT}}
 
         # This setting specifies if LDAP server is Active Directory LDAP server.
         # For non AD servers it skips the AD specific queries.
@@ -287,6 +301,15 @@ production: &base
     # arguments, followed by optional 'args' which can be either a hash or an array.
     # Documentation for this is available at http://doc.gitlab.com/ce/integration/omniauth.html
     providers:
+      # See omniauth-cas3 for more configuration details
+      - { name: 'cas3',
+          label: '{{OAUTH_CAS3_LABEL}}',
+          args: {
+                  url: '{{OAUTH_CAS3_SERVER}}',
+                  disable_ssl_verification: {{OAUTH_CAS3_DISABLE_SSL_VERIFICATION}},
+                  login_url: '{{OAUTH_CAS3_LOGIN_URL}}',
+                  service_validate_url: '{{OAUTH_CAS3_VALIDATE_URL}}',
+                  logout_url: '{{OAUTH_CAS3_LOGOUT_URL}}'} }
       - { name: 'github',
           label: 'GitHub',
           app_id: '{{OAUTH_GITHUB_API_KEY}}',
@@ -324,7 +347,15 @@ production: &base
             crowd_server_url: '{{OAUTH_CROWD_SERVER_URL}}',
             application_name: '{{OAUTH_CROWD_APP_NAME}}',
             application_password: '{{OAUTH_CROWD_APP_PASSWORD}}' } }
+      - { name: 'azure_oauth2',
+          args: {
+            client_id: '{{OAUTH_AZURE_API_KEY}}',
+            client_secret: '{{OAUTH_AZURE_API_SECRET}}',
+            tenant_id: '{{OAUTH_AZURE_TENANT_ID}}' } }
 
+    # SSO maximum session duration in seconds. Defaults to CAS default of 8 hours.
+    # cas3:
+    #   session_duration: 28800
 
   # Shared file storage settings
   shared:
