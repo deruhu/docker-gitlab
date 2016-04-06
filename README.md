@@ -2,7 +2,7 @@
 
 [![Deploy to Tutum](https://s.tutum.co/deploy-to-tutum.svg)](https://dashboard.tutum.co/stack/deploy/)
 
-# sameersbn/gitlab:8.5.4
+# sameersbn/gitlab:8.6.4
 
 - [Introduction](#introduction)
     - [Changelog](Changelog.md)
@@ -111,7 +111,7 @@ Automated builds of the image are available on [Dockerhub](https://hub.docker.co
 > **Note**: Builds are also available on [Quay.io](https://quay.io/repository/sameersbn/gitlab)
 
 ```bash
-docker pull sameersbn/gitlab:8.5.4
+docker pull sameersbn/gitlab:8.6.4
 ```
 
 You can also pull the `latest` tag which is built from the repository *HEAD*
@@ -152,8 +152,9 @@ Step 1. Launch a postgresql container
 docker run --name gitlab-postgresql -d \
     --env 'DB_NAME=gitlabhq_production' \
     --env 'DB_USER=gitlab' --env 'DB_PASS=password' \
+    --env 'DB_EXTENSION=pg_trgm' \
     --volume /srv/docker/gitlab/postgresql:/var/lib/postgresql \
-    sameersbn/postgresql:9.4-13
+    sameersbn/postgresql:9.4-18
 ```
 
 Step 2. Launch a redis container
@@ -173,17 +174,14 @@ docker run --name gitlab -d \
     --env 'GITLAB_PORT=10080' --env 'GITLAB_SSH_PORT=10022' \
     --env 'GITLAB_SECRETS_DB_KEY_BASE=long-and-random-alpha-numeric-string' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 *Please refer to [Available Configuration Parameters](#available-configuration-parameters) to understand `GITLAB_PORT` and other configuration options*
 
 __NOTE__: Please allow a couple of minutes for the GitLab application to start.
 
-Point your browser to `http://localhost:10080` and login using the default username and password:
-
-* username: **root**
-* password: **5iveL!fe**
+Point your browser to `http://localhost:10080` and set a password for the `root` user account.
 
 You should now have the GitLab application up and ready for testing. If you want to use this image in production the please read on.
 
@@ -197,6 +195,8 @@ GitLab is a code hosting software and as such you don't want to lose your code w
 
 * `/home/git/data`
 
+Note that if you are using the `docker-compose` approach, this has already been done for you.
+
 SELinux users are also required to change the security context of the mount point so that it plays nicely with selinux.
 
 ```bash
@@ -209,7 +209,7 @@ Volumes can be mounted in docker by specifying the `-v` option in the docker run
 ```bash
 docker run --name gitlab -d \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 ## Database
@@ -230,6 +230,8 @@ CREATE DATABASE gitlabhq_production;
 GRANT ALL PRIVILEGES ON DATABASE gitlabhq_production to gitlab;
 ```
 
+Additionally since GitLab `8.6.0` the `pg_trgm` extension should also be loaded for the `gitlabhq_production` database.
+
 We are now ready to start the GitLab application.
 
 *Assuming that the PostgreSQL server host is 192.168.1.100*
@@ -240,7 +242,7 @@ docker run --name gitlab -d \
     --env 'DB_NAME=gitlabhq_production' \
     --env 'DB_USER=gitlab' --env 'DB_PASS=password' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 #### Linking to PostgreSQL Container
@@ -254,7 +256,7 @@ To illustrate linking with a postgresql container, we will use the [sameersbn/po
 First, lets pull the postgresql image from the docker index.
 
 ```bash
-docker pull sameersbn/postgresql:9.4-13
+docker pull sameersbn/postgresql:9.4-18
 ```
 
 For data persistence lets create a store for the postgresql and start the container.
@@ -272,8 +274,9 @@ The run command looks like this.
 docker run --name gitlab-postgresql -d \
     --env 'DB_NAME=gitlabhq_production' \
     --env 'DB_USER=gitlab' --env 'DB_PASS=password' \
+    --env 'DB_EXTENSION=pg_trgm' \
     --volume /srv/docker/gitlab/postgresql:/var/lib/postgresql \
-    sameersbn/postgresql:9.4-13
+    sameersbn/postgresql:9.4-18
 ```
 
 The above command will create a database named `gitlabhq_production` and also create a user named `gitlab` with the password `password` with access to the `gitlabhq_production` database.
@@ -283,7 +286,7 @@ We are now ready to start the GitLab application.
 ```bash
 docker run --name gitlab -d --link gitlab-postgresql:postgresql \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 Here the image will also automatically fetch the `DB_NAME`, `DB_USER` and `DB_PASS` variables from the postgresql container as they are specified in the `docker run` command for the postgresql container. This is made possible using the magic of docker links and works with the following images:
@@ -337,7 +340,7 @@ docker run --name gitlab -d \
     --env 'DB_NAME=gitlabhq_production' \
     --env 'DB_USER=gitlab' --env 'DB_PASS=password' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 #### Linking to MySQL Container
@@ -380,7 +383,7 @@ We are now ready to start the GitLab application.
 ```bash
 docker run --name gitlab -d --link gitlab-mysql:mysql \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 Here the image will also automatically fetch the `DB_NAME`, `DB_USER` and `DB_PASS` variables from the mysql container as they are specified in the `docker run` command for the mysql container. This is made possible using the magic of docker links and works with the following images:
@@ -407,7 +410,7 @@ The image can be configured to use an external redis server. The configuration s
 ```bash
 docker run --name gitlab -it --rm \
     --env 'REDIS_HOST=192.168.1.100' --env 'REDIS_PORT=6379' \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 ### Linking to Redis Container
@@ -434,7 +437,7 @@ We are now ready to start the GitLab application.
 
 ```bash
 docker run --name gitlab -d --link gitlab-redis:redisio \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 ### Mail
@@ -464,7 +467,7 @@ If you are using Gmail then all you need to do is:
 docker run --name gitlab -d \
     --env 'IMAP_USER=USER@gmail.com' --env 'IMAP_PASS=PASSWORD' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 Please refer the [Available Configuration Parameters](#available-configuration-parameters) section for the list of IMAP parameters that can be specified.
@@ -541,7 +544,7 @@ docker run --name gitlab -d \
     --env 'GITLAB_SSH_PORT=10022' --env 'GITLAB_PORT=10443' \
     --env 'GITLAB_HTTPS=true' --env 'SSL_SELF_SIGNED=true' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 In this configuration, any requests made over the plain http protocol will automatically be redirected to use the https protocol. However, this is not optimal when using a load balancer.
@@ -557,7 +560,7 @@ docker run --name gitlab -d \
  --env 'GITLAB_HTTPS=true' --env 'SSL_SELF_SIGNED=true' \
  --env 'NGINX_HSTS_MAXAGE=2592000' \
  --volume /srv/docker/gitlab/gitlab:/home/git/data \
- sameersbn/gitlab:8.5.4
+ sameersbn/gitlab:8.6.4
 ```
 
 If you want to completely disable HSTS set `NGINX_HSTS_ENABLED` to `false`.
@@ -580,7 +583,7 @@ docker run --name gitlab -d \
     --env 'GITLAB_SSH_PORT=10022' --env 'GITLAB_PORT=443' \
     --env 'GITLAB_HTTPS=true' --env 'SSL_SELF_SIGNED=true' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 Again, drop the `--env 'SSL_SELF_SIGNED=true'` option if you are using CA certified SSL certificates.
@@ -628,7 +631,7 @@ Let's assume we want to deploy our application to '/git'. GitLab needs to know t
 docker run --name gitlab -it --rm \
     --env 'GITLAB_RELATIVE_URL_ROOT=/git' \
     --volume /srv/docker/gitlab/gitlab:/home/git/data \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 GitLab will now be accessible at the `/git` path, e.g. `http://www.example.com/git`.
@@ -713,6 +716,12 @@ To enable the Crowd server OAuth2 OmniAuth provider you must register your appli
 
 Configure GitLab to enable access the Crowd server by specifying the `OAUTH_CROWD_SERVER_URL`, `OAUTH_CROWD_APP_NAME` and `OAUTH_CROWD_APP_PASSWORD` environment variables.
 
+#### Auth0
+
+To enable the Auth0 OmniAuth provider you must register your application with [auth0](https://auth0.com/).
+
+Configure the following environment variables `OAUTH_AUTH0_CLIENT_ID`, `OAUTH_AUTH0_CLIENT_SECRET` and `OAUTH_AUTH0_DOMAIN` to complete the integration.
+
 #### Microsoft Azure
 
 To enable the Microsoft Azure OAuth2 OmniAuth provider you must register your application with Azure. Azure will generate a Client ID, Client secret and Tenant ID for you to use. Please refer to the GitLab [documentation](http://doc.gitlab.com/ce/integration/azure.html) for the procedure.
@@ -738,14 +747,14 @@ Also the container processes seem to be executed as the host's user/group `1000`
 ```bash
 docker run --name gitlab -it --rm [options] \
     --env "USERMAP_UID=$(id -u git)" --env "USERMAP_GID=$(id -g git)" \
-    sameersbn/gitlab:8.5.4
+    sameersbn/gitlab:8.6.4
 ```
 
 When changing this mapping, all files and directories in the mounted data volume `/home/git/data` have to be re-owned by the new ids. This can be achieved automatically using the following command:
 
 ```bash
 docker run --name gitlab -d [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:sanitize
+    sameersbn/gitlab:8.6.4 app:sanitize
 ```
 
 ### Piwik
@@ -802,6 +811,7 @@ Below is the complete list of available options that can be used to customize yo
 - **GITLAB_BACKUP_PG_SCHEMA**: Specify the PostgreSQL schema for the backups. No defaults, which means that all schemas will be backed up. see #524
 - **GITLAB_BACKUP_ARCHIVE_PERMISSIONS**: Sets the permissions of the backup archives. Defaults to `0600`. [See](http://doc.gitlab.com/ce/raketasks/backup_restore.html#backup-archive-permissions)
 - **GITLAB_BACKUP_TIME**: Set a time for the automatic backups in `HH:MM` format. Defaults to `04:00`.
+- **GITLAB_BACKUP_SKIP**: Specified sections are skipped by the backups. Defaults to empty, i.e. `lfs,uploads`. [See](http://doc.gitlab.com/ce/raketasks/backup_restore.html#create-a-backup-of-the-gitlab-system)
 - **GITLAB_SSH_HOST**: The ssh host. Defaults to **GITLAB_HOST**.
 - **GITLAB_SSH_PORT**: The ssh port number. Defaults to `22`.
 - **GITLAB_RELATIVE_URL_ROOT**: The relative url of the GitLab server, e.g. `/git`. No default.
@@ -902,6 +912,9 @@ Below is the complete list of available options that can be used to customize yo
 - **OAUTH_CROWD_SERVER_URL**: Crowd server url. No defaults.
 - **OAUTH_CROWD_APP_NAME**: Crowd server application name. No defaults.
 - **OAUTH_CROWD_APP_PASSWORD**: Crowd server application password. No defaults.
+- **OAUTH_AUTH0_CLIENT_ID**: Auth0 Client ID. No defaults.
+- **OAUTH_AUTH0_CLIENT_SECRET**: Auth0 Client secret. No defaults.
+- **OAUTH_AUTH0_DOMAIN**: Auth0 Domain. No defaults.
 - **OAUTH_AZURE_API_KEY**: Azure Client ID. No defaults.
 - **OAUTH_AZURE_API_SECRET**: Azure Client secret. No defaults.
 - **OAUTH_AZURE_TENANT_ID**: Azure Tenant ID. No defaults.
@@ -924,6 +937,7 @@ Below is the complete list of available options that can be used to customize yo
 - **RACK_ATTACK_MAXRETRY**: Number of failed auth attempts before which an IP should be banned. Defaults to `10`
 - **RACK_ATTACK_FINDTIME**: Number of seconds before resetting the per IP auth attempt counter. Defaults to `60`.
 - **RACK_ATTACK_BANTIME**: Number of seconds an IP should be banned after too many auth attempts. Defaults to `3600`.
+- **GITLAB_WORKHORSE_TIMEOUT**: Timeout for gitlab workhorse http proxy. Defaults to `5m0s`.
 
 # Maintenance
 
@@ -941,7 +955,7 @@ Execute the rake task to create a backup.
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:backup:create
+    sameersbn/gitlab:8.6.4 app:rake gitlab:backup:create
 ```
 
 A backup will be created in the backups folder of the [Data Store](#data-store). You can change the location of the backups using the `GITLAB_BACKUP_DIR` configuration parameter.
@@ -962,7 +976,7 @@ Execute the rake task to restore a backup. Make sure you run the container in in
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:backup:restore
+    sameersbn/gitlab:8.6.4 app:rake gitlab:backup:restore
 ```
 
 The list of all available backups will be displayed in reverse chronological order. Select the backup you want to restore and continue.
@@ -971,7 +985,7 @@ To avoid user interaction in the restore operation, specify the timestamp of the
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:backup:restore BACKUP=1417624827
+    sameersbn/gitlab:8.6.4 app:rake gitlab:backup:restore BACKUP=1417624827
 ```
 
 ## Automated Backups
@@ -996,7 +1010,7 @@ The `app:rake` command allows you to run gitlab rake tasks. To run a rake task s
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:env:info
+    sameersbn/gitlab:8.6.4 app:rake gitlab:env:info
 ```
 
 You can also use `docker exec` to run raketasks on running gitlab instance. For example,
@@ -1009,7 +1023,7 @@ Similarly, to import bare repositories into GitLab project instance
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:import:repos
+    sameersbn/gitlab:8.6.4 app:rake gitlab:import:repos
 ```
 
 Or
@@ -1028,7 +1042,7 @@ Copy all the **bare** git repositories to the `repositories/` directory of the [
 
 ```bash
 docker run --name gitlab -it --rm [OPTIONS] \
-    sameersbn/gitlab:8.5.4 app:rake gitlab:import:repos
+    sameersbn/gitlab:8.6.4 app:rake gitlab:import:repos
 ```
 
 Watch the logs and your repositories should be available into your new gitlab container.
@@ -1037,18 +1051,24 @@ See [Rake Tasks](#rake-tasks) for more information on executing rake tasks.
 
 ## Upgrading
 
+> **Important Notice**
+>
+> Since GitLab release `8.6.0` PostgreSQL users should enable `pg_trgm` extension on the GitLab database. Refer to GitLab's [Postgresql Requirements](http://doc.gitlab.com/ce/install/requirements.html#postgresql-requirements) for more information
+>
+> If your using `sameersbn/postgresql` then please upgrade to `sameersbn/postgresql:9.4-18` and add `DB_EXTENSION=pg_trgm` to the environment of the PostgreSQL container (see: https://github.com/sameersbn/docker-gitlab/blob/master/docker-compose.yml#L8).
+
 GitLabHQ releases new versions on the 22nd of every month, bugfix releases immediately follow. I update this project almost immediately when a release is made (at least it has been the case so far). If you are using the image in production environments I recommend that you delay updates by a couple of days after the gitlab release, allowing some time for the dust to settle down.
 
 To upgrade to newer gitlab releases, simply follow this 4 step upgrade procedure.
 
 > **Note**
 >
-> Upgrading to `sameersbn/gitlab:8.5.4` from `sameersbn/gitlab:7.x.x` can cause issues. It is therefore required that you first upgrade to `sameersbn/gitlab:8.0.5-1` before upgrading to `sameersbn/gitlab:8.1.0` or higher.
+> Upgrading to `sameersbn/gitlab:8.6.4` from `sameersbn/gitlab:7.x.x` can cause issues. It is therefore required that you first upgrade to `sameersbn/gitlab:8.0.5-1` before upgrading to `sameersbn/gitlab:8.1.0` or higher.
 
 - **Step 1**: Update the docker image.
 
 ```bash
-docker pull sameersbn/gitlab:8.5.4
+docker pull sameersbn/gitlab:8.6.4
 ```
 
 - **Step 2**: Stop and remove the currently running image
@@ -1072,7 +1092,7 @@ Replace `x.x.x` with the version you are upgrading from. For example, if you are
 > **Note**: Since GitLab `8.0.0` you need to provide the `GITLAB_SECRETS_DB_KEY_BASE` parameter while starting the image.
 
 ```bash
-docker run --name gitlab -d [OPTIONS] sameersbn/gitlab:8.5.4
+docker run --name gitlab -d [OPTIONS] sameersbn/gitlab:8.6.4
 ```
 
 ## Shell Access
