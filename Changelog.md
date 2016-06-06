@@ -2,6 +2,28 @@
 
 This file only reflects the changes that are made in this image. Please refer to the upstream GitLab [CHANGELOG](https://gitlab.com/gitlab-org/gitlab-ce/blob/master/CHANGELOG) for the list of changes in GitLab.
 
+**8.8.3**
+- gitlab: upgrade to CE v8.8.3
+
+**8.8.2**
+- gitlab: upgrade to CE v8.8.2
+
+**8.8.1**
+- gitlab: upgrade to CE v8.8.1
+
+**8.8.0**
+- gitlab: upgrade to CE v8.8.0
+- oauth: exposed `OAUTH_GITHUB_URL` and `OAUTH_GITHUB_VERIFY_SSL` options for users for GitHub Enterprise.
+
+**8.7.6**
+- gitlab: upgrade to CE v8.7.6
+
+**8.7.5**
+- gitlab: upgrade to CE v8.7.5
+
+**8.7.3**
+- gitlab: upgrade to CE v8.7.3
+
 **8.7.2**
 - gitlab: upgrade to CE v8.7.2
 
