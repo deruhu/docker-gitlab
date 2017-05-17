@@ -1,6 +1,48 @@
 # Changelog
 
-This file only reflects the changes that are made in this image. Please refer to the upstream GitLab [CHANGELOG](https://gitlab.com/gitlab-org/gitlab-ce/blob/master/CHANGELOG.md) for the list of changes in GitLab.
+This file only reflects the changes that are made in this image. Please refer to the upstream GitLab [CHANGELOG](
+https://gitlab.com/gitlab-org/gitlab-ce/blob/master/CHANGELOG.md) for the list of changes in GitLab.
+
+
+**9.1.4**
+- gitlab: upgrade to CE v9.1.4
+
+**9.1.3**
+- gitlab: upgrade to CE v9.1.3
+
+**9.1.2**
+- gitlab: upgrade to CE v9.1.2
+- update baseimage to `14.04.20170503`
+
+**9.1.1**
+- gitlab: upgrade to CE v9.1.1
+
+**9.1.0-1**
+- Fix gitlab-workhorse version display
+
+**9.1.0**
+- gitlab: upgrade to CE v9.1.0
+- gitlab-shell: upgrade to 5.0.2
+- gitlab-workhorse: upgrade to 1.4.3
+
+**9.0.6**
+- gitlab: upgrade to CE v9.0.6
+
+**9.0.5**
+- gitlab: upgrade to CE v9.0.5
+
+**9.0.4**
+- gitlab: upgrade to CE v9.0.4
+
+**9.0.3**
+- gitlab: upgrade to CE v9.0.3
+
+**9.0.2**
+- gitlab: upgrade to CE v9.0.2
+
+**9.0.1**
+- gitlab: upgrade to CE v9.0.1
+- gitlab-workhorse 1.4.2
 
 **9.0.0**
 - gitlab: upgrade to CE v9.0.0
